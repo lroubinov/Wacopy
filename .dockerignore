@@ -1,0 +1,10 @@
+node_modules
+dist
+.vinext
+.next
+.wrangler
+.git
+.env*
+!.env.synology.example
+data
+npm-debug.log*

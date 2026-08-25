@@ -1,0 +1,2 @@
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p=Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Startup\WACopy Connect.lnk'; Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue; Get-CimInstance Win32_Process | Where-Object {$_.CommandLine -like '*WACopyConnect.ps1*'} | ForEach-Object {Stop-Process -Id $_.ProcessId -Force}; Write-Host 'WACopy Connect removed from startup.'"
