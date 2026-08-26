@@ -145,7 +145,7 @@ export default function AdminPage() {
       <section className="rooms-grid">
         {rooms.map((room) => (
           <article className="room-card panel" key={room.id}>
-            <div className="room-title"><div><span>{room.ownerName ? `${room.ownerName} · ${room.ownerUsername}` : 'חדר מנהל'}</span><h2>{room.name}</h2></div><div className="room-actions"><Link className="browser-room-link" href={`/room?roomId=${room.id}`}>דפדפן</Link><button className="delete-room" onClick={() => removeRoom(room)}>מחיקת חדר</button><span className="device-count">{room.devices.length} מכשירים</span></div></div>
+            <div className="room-title"><div><span>{room.ownerName ? `${room.ownerName} · ${room.ownerUsername}` : 'חדר מנהל'}</span><h2>{room.name}</h2></div><div className="room-actions"><a className="browser-room-link" href={`/room?roomId=${encodeURIComponent(room.id)}`}>דפדפן</a><button className="delete-room" onClick={() => removeRoom(room)}>מחיקת חדר</button><span className="device-count">{room.devices.length} מכשירים</span></div></div>
             <div className="device-section">
               <div className="device-heading"><h3>טלפונים</h3><button onClick={() => addDevice(room.id, 'phone')}>+ הוספת טלפון</button></div>
               {room.devices.filter((device) => device.type === 'phone').map((device) => <div className="device-row" key={device.id}><span className="device-symbol">▯</span><strong>{device.name}</strong><button className="revoke" onClick={() => revoke(device)}>ביטול</button></div>)}

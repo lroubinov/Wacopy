@@ -86,7 +86,7 @@ export default function DashboardPage() {
 
     <section className="rooms-grid">
       {rooms.map((room) => <article className="room-card panel" key={room.id}>
-        <div className="room-title"><div><span>חדר פרטי</span><h2>{room.name}</h2></div><Link className="browser-room-link" href={`/room?roomId=${room.id}`}>פתיחה בדפדפן</Link></div>
+        <div className="room-title"><div><span>חדר פרטי</span><h2>{room.name}</h2></div><a className="browser-room-link" href={`/room?roomId=${encodeURIComponent(room.id)}`}>פתיחה בדפדפן</a></div>
         <div className="device-section">
           <div className="device-heading"><h3>טלפונים</h3><button onClick={() => addDevice(room.id, 'phone')}>+ הוספת טלפון</button></div>
           {room.devices.filter((device) => device.type === 'phone').map((device) => <div className="device-row" key={device.id}><span className="device-symbol">▯</span><strong>{device.name}</strong><button className="revoke" onClick={() => revoke(device)}>ביטול</button></div>)}
