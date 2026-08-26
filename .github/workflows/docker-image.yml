@@ -45,3 +45,20 @@ jobs:
             org.opencontainers.image.version=5.0.0
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Verify the published container starts
+        shell: bash
+        run: |
+          docker pull ghcr.io/lroubinov/wacopy:latest
+          docker run -d --name wacopy-smoke -p 3100:3100 \
+            -e APP_PASSWORD=smoke-test-password \
+            -e SESSION_SECRET=smoke-test-secret-longer-than-thirty-two-characters \
+            ghcr.io/lroubinov/wacopy:latest
+          trap 'docker logs wacopy-smoke; docker rm -f wacopy-smoke >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3100/api/text >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1

@@ -6,6 +6,7 @@ RUN npm ci
 
 COPY . .
 RUN npm run build
+RUN npm prune --omit=dev && npm cache clean --force
 
 FROM node:24-bookworm-slim AS runner
 WORKDIR /app
@@ -24,6 +25,7 @@ RUN groupadd --system --gid 1001 maaviron && \
     useradd --system --uid 1001 --gid maaviron maaviron && \
     mkdir -p /data/images && chown -R maaviron:maaviron /data
 
+COPY --from=builder --chown=maaviron:maaviron /app/node_modules ./node_modules
 COPY --from=builder --chown=maaviron:maaviron /app/dist/standalone ./
 
 USER maaviron
