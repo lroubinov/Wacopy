@@ -63,6 +63,8 @@ public static class WACopyNativeInput {
     private static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")]
     private static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extraInfo);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
 
     public static void PasteClipboard() {
         for (int attempt = 0; attempt < 60; attempt++) {
@@ -86,6 +88,7 @@ $script:SettingsPath = Join-Path $script:AppDirectory 'settings.json'
 $script:LatestText = ''
 $script:LatestKind = ''
 $script:LatestImageUrl = ''
+$script:LatestMimeType = ''
 $script:LatestMessageId = ''
 $script:LastNotifiedMessageId = ''
 $script:Polling = $false
@@ -161,6 +164,40 @@ function Update-Status([string]$Value) {
     $script:Tray.Text = "WACopy Connect — $Value"
 }
 
+function Get-ActiveExplorerFolder {
+    $foregroundHandle = [WACopyNativeInput]::GetForegroundWindow().ToInt64()
+    if ($foregroundHandle -eq 0) { return '' }
+    $shell = $null
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        foreach ($window in @($shell.Windows())) {
+            try {
+                if ([long]$window.HWND -eq $foregroundHandle) {
+                    $folderPath = [string]$window.Document.Folder.Self.Path
+                    if ($folderPath -and [IO.Directory]::Exists($folderPath)) { return $folderPath }
+                }
+            } catch { }
+        }
+    } catch { }
+    finally {
+        if ($shell) { [void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell) }
+    }
+    return ''
+}
+
+function Save-ImageToFolder([byte[]]$Bytes, [string]$FolderPath, [string]$MimeType) {
+    $extension = if ($MimeType -eq 'image/jpeg') { 'jpg' } else { 'png' }
+    $baseName = "WACopy-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss'))"
+    $filePath = Join-Path $FolderPath "$baseName.$extension"
+    $counter = 2
+    while ([IO.File]::Exists($filePath)) {
+        $filePath = Join-Path $FolderPath "$baseName-$counter.$extension"
+        $counter++
+    }
+    [IO.File]::WriteAllBytes($filePath, $Bytes)
+    return $filePath
+}
+
 function Poll-Latest {
     if ($script:Polling -or -not $script:Settings) { return }
     $script:Polling = $true
@@ -173,6 +210,7 @@ function Poll-Latest {
         $script:LatestText = [string]$data.text
         $script:LatestKind = [string]$data.kind
         $script:LatestImageUrl = [string]$data.imageUrl
+        $script:LatestMimeType = [string]$data.mimeType
         $script:LatestMessageId = [string]$data.id
         Update-Status 'מחובר'
         if ($script:LatestMessageId -and $script:LatestMessageId -ne $script:LastNotifiedMessageId) {
@@ -198,31 +236,44 @@ function Paste-Latest {
         return
     }
     try {
+        $savedImagePath = ''
+        $shouldPaste = $true
         if ($script:LatestKind -eq 'image') {
+            $explorerFolder = Get-ActiveExplorerFolder
             $request = New-Request ([Net.Http.HttpMethod]::Get) $script:LatestImageUrl
             $response = $script:Http.SendAsync($request).GetAwaiter().GetResult()
             if (-not $response.IsSuccessStatusCode) { throw "Image download failed: $([int]$response.StatusCode)" }
             $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
-            $stream = [IO.MemoryStream]::new([byte[]]$bytes)
-            try {
-                $source = [Drawing.Image]::FromStream($stream)
+            if ($explorerFolder) {
+                $savedImagePath = Save-ImageToFolder ([byte[]]$bytes) $explorerFolder $script:LatestMimeType
+                $shouldPaste = $false
+            } else {
+                $stream = [IO.MemoryStream]::new([byte[]]$bytes)
                 try {
-                    $bitmap = [Drawing.Bitmap]::new($source)
-                    try { [Windows.Forms.Clipboard]::SetImage($bitmap) }
-                    finally { $bitmap.Dispose() }
-                } finally { $source.Dispose() }
-            } finally { $stream.Dispose() }
+                    $source = [Drawing.Image]::FromStream($stream)
+                    try {
+                        $bitmap = [Drawing.Bitmap]::new($source)
+                        try { [Windows.Forms.Clipboard]::SetImage($bitmap) }
+                        finally { $bitmap.Dispose() }
+                    } finally { $source.Dispose() }
+                } finally { $stream.Dispose() }
+            }
         } else {
             [Windows.Forms.Clipboard]::SetText($script:LatestText)
         }
-        [WACopyNativeInput]::PasteClipboard()
+        if ($shouldPaste) { [WACopyNativeInput]::PasteClipboard() }
         $pastedMessageId = $script:LatestMessageId
         $script:LatestText = ''
         $script:LatestKind = ''
         $script:LatestImageUrl = ''
+        $script:LatestMimeType = ''
         $script:LatestMessageId = ''
         Acknowledge-Paste $pastedMessageId
-        Show-Balloon 'התוכן הודבק' 'התוכן נמחק מהשרת.'
+        if ($savedImagePath) {
+            Show-Balloon 'התמונה נשמרה בתיקייה' ([IO.Path]::GetFileName($savedImagePath))
+        } else {
+            Show-Balloon 'התוכן הודבק' 'התוכן נמחק מהשרת.'
+        }
     } catch {
         Show-Balloon 'ההדבקה נכשלה' 'נסו שוב לאחר הצבת הסמן במקום הרצוי.' ([System.Windows.Forms.ToolTipIcon]::Error)
     }

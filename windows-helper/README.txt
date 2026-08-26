@@ -1,4 +1,4 @@
-WACopy Connect for Windows 3.0.0
+WACopy Connect for Windows 3.1.0
 ==========================
 
 1. In WACopy, open /admin and create a private room.
@@ -6,6 +6,7 @@ WACopy Connect for Windows 3.0.0
 3. Double-click Install.cmd on the Windows computer.
 4. Enter https://wacopy.lroubinov.synology.me and the computer key.
 5. When text or an image arrives, focus the destination and press the configured shortcut.
+6. If File Explorer is active, an image is saved as a PNG/JPEG file in the open folder.
 
 The paste shortcut can be changed from the tray icon under Settings.
 

@@ -119,6 +119,7 @@ footer { position:relative; z-index:1; display:flex; justify-content:center; gap
 .admin-header { display:flex; align-items:center; justify-content:space-between; gap:30px; padding-bottom:28px; border-bottom:1px solid rgba(17,35,31,.1); }
 .admin-header>div { text-align:left; }
 .admin-header h1 { margin:4px 0 0; font-family:Georgia,'Times New Roman',serif; font-size:34px; font-weight:500; }
+.admin-logout { margin-top:7px; }
 .admin-kicker { color:var(--green); font-size:12px; font-weight:900; }
 .account-heading { position:relative; }
 .account-heading .text-action { position:absolute; left:0; bottom:-22px; }

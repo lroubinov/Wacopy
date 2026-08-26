@@ -45,6 +45,11 @@ export default function AdminPage() {
     if (response.ok) { setPassword(''); await loadRooms(); }
   }
 
+  async function logout() {
+    await fetch('/api/auth', { method: 'DELETE' });
+    window.location.assign('/dashboard');
+  }
+
   async function addRoom(event: React.FormEvent) {
     event.preventDefault();
     if (!roomName.trim() || busy) return;
@@ -115,7 +120,7 @@ export default function AdminPage() {
     <main className="admin-shell" dir="rtl">
       <header className="admin-header">
         <Link className="brand" href="/"><span className="brand-mark" aria-hidden="true"><span /><span /></span><span>WACopy</span></Link>
-        <div><span className="admin-kicker">ניהול מערכת</span><h1>חדרים ומכשירים</h1></div>
+        <div><span className="admin-kicker">ניהול מערכת</span><h1>חדרים ומכשירים</h1>{!locked && <button className="text-action admin-logout" onClick={logout}>יציאה מחשבון מנהל</button>}</div>
       </header>
 
       <section className="admin-users panel">
