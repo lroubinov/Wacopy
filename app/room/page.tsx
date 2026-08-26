@@ -3,11 +3,11 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type BrowserMessage = { id: string | null; text: string; updatedAt: string | null };
+type BrowserMessage = { kind: 'text' | 'image' | null; id: string | null; text?: string; imageUrl?: string; mimeType?: string; updatedAt: string | null };
 
 export default function BrowserRoomPage() {
   const roomIdRef = useRef('');
-  const [message, setMessage] = useState<BrowserMessage>({ id: null, text: '', updatedAt: null });
+  const [message, setMessage] = useState<BrowserMessage>({ kind: null, id: null, text: '', updatedAt: null });
   const [state, setState] = useState<'loading' | 'ready' | 'locked' | 'copied'>('loading');
 
   const refresh = useCallback(async (id: string) => {
@@ -29,11 +29,30 @@ export default function BrowserRoomPage() {
     return () => { window.clearTimeout(startTimer); if (pollTimer) window.clearInterval(pollTimer); };
   }, [refresh]);
 
+  async function imageAsPng(blob: Blob) {
+    if (blob.type === 'image/png') return blob;
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width; canvas.height = bitmap.height;
+    canvas.getContext('2d')?.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return new Promise<Blob>((resolve, reject) => canvas.toBlob((png) => png ? resolve(png) : reject(new Error('Conversion failed')), 'image/png'));
+  }
+
   async function copy() {
-    if (!message.id || !message.text) return;
-    await navigator.clipboard.writeText(message.text);
+    if (!message.id) return;
+    if (message.kind === 'image' && message.imageUrl) {
+      const blob = await fetch(message.imageUrl, { cache: 'no-store' }).then((response) => {
+        if (!response.ok) throw new Error('Image not found');
+        return response.blob();
+      });
+      const png = await imageAsPng(blob);
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+    } else if (message.kind === 'text' && message.text) {
+      await navigator.clipboard.writeText(message.text);
+    } else return;
     await fetch(`/api/account/browser?roomId=${encodeURIComponent(roomIdRef.current)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messageId: message.id }) });
-    setState('copied'); setMessage({ id: null, text: '', updatedAt: null });
+    setState('copied'); setMessage({ kind: null, id: null, text: '', updatedAt: null });
     window.setTimeout(() => setState('ready'), 1800);
   }
 
@@ -42,10 +61,10 @@ export default function BrowserRoomPage() {
   return <main className="browser-receiver" dir="rtl">
     <header className="phone-header"><Link className="brand" href="/dashboard"><span className="brand-mark"><span /><span /></span><span>WACopy</span></Link><span className="private-pill">תצוגת דפדפן פרטית</span></header>
     <section className="browser-receiver-card panel">
-      <span className="browser-symbol">▣</span><h1>טקסט שהתקבל בחדר</h1><p>{message.updatedAt ? 'הטקסט התקבל ומוכן להעתקה' : 'ממתין לטקסט מהטלפון…'}</p>
-      <div className={`received-text ${message.text ? '' : 'empty'}`}>{message.text || 'בטלפון בחרו יעד: העתקה בדפדפן'}</div>
-      <button className="copy-button" onClick={copy} disabled={!message.text}>{state === 'copied' ? 'הועתק ללוח ✓' : 'העתקת הטקסט'}</button>
+      <span className="browser-symbol">▣</span><h1>תוכן שהתקבל בחדר</h1><p>{message.updatedAt ? (message.kind === 'image' ? 'התמונה התקבלה ומוכנה להעתקה' : 'הטקסט התקבל ומוכן להעתקה') : 'ממתין לתוכן מהטלפון…'}</p>
+      {message.kind === 'image' && message.imageUrl ? <div className="received-image"><img src={message.imageUrl} alt="תמונה שהתקבלה" /></div> : <div className={`received-text ${message.text ? '' : 'empty'}`}>{message.text || 'בטלפון בחרו יעד: העתקה בדפדפן'}</div>}
+      <button className="copy-button" onClick={copy} disabled={!message.id}>{state === 'copied' ? 'הועתק ללוח ✓' : message.kind === 'image' ? 'העתקת התמונה' : 'העתקת הטקסט'}</button>
     </section>
-    <footer><span>רק בעל החדר והמנהל מורשים לגשת</span><span>•</span><span>הטקסט נמחק לאחר ההעתקה</span></footer>
+    <footer><span>רק בעל החדר והמנהל מורשים לגשת</span><span>•</span><span>התוכן נמחק לאחר ההעתקה</span></footer>
   </main>;
 }

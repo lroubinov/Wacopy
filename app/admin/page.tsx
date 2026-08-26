@@ -78,7 +78,7 @@ export default function AdminPage() {
   }
 
   async function removeRoom(room: Room) {
-    if (!window.confirm(`למחוק לצמיתות את החדר ${room.name} ואת כל המכשירים והטקסטים שבו?`)) return;
+    if (!window.confirm(`למחוק לצמיתות את החדר ${room.name} ואת כל המכשירים והתכנים שבו?`)) return;
     await fetch('/api/admin/rooms', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ roomId: room.id }) });
     await loadRooms();
   }

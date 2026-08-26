@@ -84,6 +84,8 @@ public static class WACopyNativeInput {
 $script:AppDirectory = Join-Path $env:LOCALAPPDATA 'WACopyConnect'
 $script:SettingsPath = Join-Path $script:AppDirectory 'settings.json'
 $script:LatestText = ''
+$script:LatestKind = ''
+$script:LatestImageUrl = ''
 $script:LatestMessageId = ''
 $script:LastNotifiedMessageId = ''
 $script:Polling = $false
@@ -136,7 +138,7 @@ function Apply-HotKey([string]$Name) {
     if ($script:HotKey -and -not $script:HotKey.ChangeHotKey([uint32]$definition.Modifiers, [uint32]$definition.Key)) {
         return $false
     }
-    if ($script:PasteItem) { $script:PasteItem.Text = "הדבקת הטקסט האחרון  $Name" }
+    if ($script:PasteItem) { $script:PasteItem.Text = "הדבקת התוכן האחרון  $Name" }
     return $true
 }
 
@@ -169,11 +171,14 @@ function Poll-Latest {
         if (-not $response.IsSuccessStatusCode) { Update-Status "שגיאת שרת $([int]$response.StatusCode)"; return }
         $data = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult() | ConvertFrom-Json
         $script:LatestText = [string]$data.text
+        $script:LatestKind = [string]$data.kind
+        $script:LatestImageUrl = [string]$data.imageUrl
         $script:LatestMessageId = [string]$data.id
         Update-Status 'מחובר'
-        if ($script:LatestText -and $script:LatestMessageId -ne $script:LastNotifiedMessageId) {
+        if ($script:LatestMessageId -and $script:LatestMessageId -ne $script:LastNotifiedMessageId) {
             $script:LastNotifiedMessageId = $script:LatestMessageId
-            Show-Balloon 'טקסט חדש התקבל' "מקמו את הסמן בתיבה הרצויה ולחצו $($script:Settings.HotKey)."
+            $contentName = if ($script:LatestKind -eq 'image') { 'תמונה חדשה' } else { 'טקסט חדש' }
+            Show-Balloon "$contentName התקבלה" "מקמו את הסמן במקום הרצוי ולחצו $($script:Settings.HotKey)."
         }
     } catch { Update-Status 'אין חיבור' }
     finally { $script:Polling = $false }
@@ -188,20 +193,38 @@ function Acknowledge-Paste([string]$MessageId) {
 }
 
 function Paste-Latest {
-    if (-not $script:LatestText) {
-        Show-Balloon 'אין טקסט להדבקה' 'שלחו קודם טקסט דרך WACopy.' ([System.Windows.Forms.ToolTipIcon]::Warning)
+    if (-not $script:LatestMessageId) {
+        Show-Balloon 'אין תוכן להדבקה' 'שלחו קודם טקסט או תמונה דרך WACopy.' ([System.Windows.Forms.ToolTipIcon]::Warning)
         return
     }
     try {
-        [Windows.Forms.Clipboard]::SetText($script:LatestText)
+        if ($script:LatestKind -eq 'image') {
+            $request = New-Request ([Net.Http.HttpMethod]::Get) $script:LatestImageUrl
+            $response = $script:Http.SendAsync($request).GetAwaiter().GetResult()
+            if (-not $response.IsSuccessStatusCode) { throw "Image download failed: $([int]$response.StatusCode)" }
+            $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+            $stream = [IO.MemoryStream]::new([byte[]]$bytes)
+            try {
+                $source = [Drawing.Image]::FromStream($stream)
+                try {
+                    $bitmap = [Drawing.Bitmap]::new($source)
+                    try { [Windows.Forms.Clipboard]::SetImage($bitmap) }
+                    finally { $bitmap.Dispose() }
+                } finally { $source.Dispose() }
+            } finally { $stream.Dispose() }
+        } else {
+            [Windows.Forms.Clipboard]::SetText($script:LatestText)
+        }
         [WACopyNativeInput]::PasteClipboard()
         $pastedMessageId = $script:LatestMessageId
         $script:LatestText = ''
+        $script:LatestKind = ''
+        $script:LatestImageUrl = ''
         $script:LatestMessageId = ''
         Acknowledge-Paste $pastedMessageId
-        Show-Balloon 'הטקסט הודבק' 'הטקסט נמחק מהשרת.'
+        Show-Balloon 'התוכן הודבק' 'התוכן נמחק מהשרת.'
     } catch {
-        Show-Balloon 'ההדבקה נכשלה' 'נסו שוב לאחר הצבת הסמן בתיבת טקסט.' ([System.Windows.Forms.ToolTipIcon]::Error)
+        Show-Balloon 'ההדבקה נכשלה' 'נסו שוב לאחר הצבת הסמן במקום הרצוי.' ([System.Windows.Forms.ToolTipIcon]::Error)
     }
 }
 
@@ -252,7 +275,7 @@ $script:Tray.Visible = $true
 $menu = [Windows.Forms.ContextMenuStrip]::new()
 $script:StatusItem = $menu.Items.Add('מצב: מתחבר')
 $script:StatusItem.Enabled = $false
-$script:PasteItem = $menu.Items.Add('הדבקת הטקסט האחרון')
+$script:PasteItem = $menu.Items.Add('הדבקת התוכן האחרון')
 $settingsItem = $menu.Items.Add('הגדרות')
 $exitItem = $menu.Items.Add('יציאה')
 $script:Tray.ContextMenuStrip = $menu

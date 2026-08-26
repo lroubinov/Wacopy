@@ -1,4 +1,5 @@
-import { acknowledgeMessage } from '../../../lib/database';
+import { acknowledgeImage, acknowledgeMessage } from '../../../lib/database';
+import { deleteImage } from '../../../lib/image-storage';
 import { authenticateWindowsComputer } from '../auth';
 
 export async function POST(request: Request) {
@@ -12,5 +13,8 @@ export async function POST(request: Request) {
   if (typeof body.messageId !== 'string') {
     return Response.json({ error: 'Message is required' }, { status: 400 });
   }
-  return Response.json({ cleared: acknowledgeMessage(computer.id, body.messageId) });
+  const textCleared = acknowledgeMessage(computer.id, body.messageId);
+  const imageFile = textCleared ? null : acknowledgeImage('computer', computer.id, body.messageId);
+  if (imageFile) await deleteImage(imageFile);
+  return Response.json({ cleared: textCleared || Boolean(imageFile) });
 }

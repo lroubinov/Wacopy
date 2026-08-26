@@ -1,10 +1,10 @@
 services:
   maaviron:
-    image: maaviron:4.0.1
+    image: maaviron:5.0.0
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: maaviron-v401
+    container_name: maaviron-v500
     restart: unless-stopped
     ports:
       - "3100:3100"
@@ -16,6 +16,7 @@ services:
       HOSTNAME: "0.0.0.0"
       FORCE_SECURE_COOKIE: "true"
       WACOPY_DB_PATH: "/data/wacopy.db"
+      WACOPY_IMAGE_PATH: "/data/images"
     volumes:
       - wacopy_data:/data
     security_opt:
