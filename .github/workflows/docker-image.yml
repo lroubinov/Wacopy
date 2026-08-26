@@ -56,7 +56,8 @@ jobs:
             ghcr.io/lroubinov/wacopy:latest
           trap 'docker logs wacopy-smoke; docker rm -f wacopy-smoke >/dev/null 2>&1 || true' EXIT
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:3100/api/text >/dev/null; then
+            status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3100/api/text || true)"
+            if [[ "$status" == "200" || "$status" == "401" ]]; then
               exit 0
             fi
             sleep 1
