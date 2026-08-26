@@ -1,9 +1,6 @@
 services:
   maaviron:
-    image: maaviron:5.0.0
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/lroubinov/wacopy:latest
     container_name: maaviron-v500
     restart: unless-stopped
     ports:
@@ -13,7 +10,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3100"
-      HOSTNAME: "0.0.0.0"
+      HOST: "0.0.0.0"
       FORCE_SECURE_COOKIE: "true"
       WACOPY_DB_PATH: "/data/wacopy.db"
       WACOPY_IMAGE_PATH: "/data/images"

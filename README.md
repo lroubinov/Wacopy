@@ -22,7 +22,8 @@
 3. הפעילו את הפרויקט דרך Container Manager או באמצעות:
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ## עדכון מהמאגר
@@ -31,10 +32,11 @@ docker compose up -d --build
 
 ```sh
 git pull --ff-only
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-ניתן גם להריץ את `update-synology.sh`. מסד הנתונים וקובץ `.env` אינם נשמרים ב-GitHub ולא נדרסים בעדכון.
+GitHub בונה אוטומטית Image מוכן ל-DS718+. ה-Synology מוריד אותו מ-`ghcr.io/lroubinov/wacopy:latest` ואינו מריץ `npm ci` או בנייה מקומית. ניתן גם להריץ את `update-synology.sh`. מסד הנתונים וקובץ `.env` אינם נשמרים ב-GitHub ולא נדרסים בעדכון.
 
 ## Windows
 

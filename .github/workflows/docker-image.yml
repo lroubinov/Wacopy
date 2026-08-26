@@ -1,0 +1,47 @@
+name: Build and publish Docker image
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: docker-main
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and publish for Synology DS718+
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/lroubinov/wacopy:latest
+            ghcr.io/lroubinov/wacopy:5.0.0
+          labels: |
+            org.opencontainers.image.source=https://github.com/lroubinov/Wacopy
+            org.opencontainers.image.description=WACopy private text and image transfer
+            org.opencontainers.image.version=5.0.0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
