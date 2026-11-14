@@ -20,11 +20,11 @@ export default function PhonePage() {
 
   useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
-  function chooseFile(selected: File | null, convertByDefault = false) {
+  function chooseFile(selected: File | null) {
     const supported = selected && (['image/png', 'image/jpeg', 'application/pdf'].includes(selected.type) || selected.name.toLocaleLowerCase('en-US').endsWith('.pdf'));
     if (!selected || !supported || selected.size > 10 * 1024 * 1024) return;
     setFile(selected);
-    setConvertImageToPdf(Boolean(selected.type.startsWith('image/') && convertByDefault));
+    setConvertImageToPdf(false);
     setText('');
   }
 
@@ -89,7 +89,7 @@ export default function PhonePage() {
       {imagePreview && <div className="phone-image-preview"><img src={imagePreview} alt="תמונה שנבחרה להעברה" />{convertImageToPdf && <span className="pdf-format-badge">יישלח כ־PDF</span>}<button type="button" onClick={() => { setFile(null); setConvertImageToPdf(false); }}>הסרת הקובץ</button></div>}
       {isPdf && file && <div className="phone-file-preview"><span>PDF</span><strong>{file.name}</strong><small>{(file.size / 1024 / 1024).toFixed(1)} MB</small><button type="button" onClick={() => { setFile(null); setConvertImageToPdf(false); }}>הסרה</button></div>}
       {imagePreview && <div className="phone-format-picker"><button type="button" className={convertImageToPdf ? '' : 'active'} onClick={() => setConvertImageToPdf(false)}>שליחה כתמונה</button><button type="button" className={convertImageToPdf ? 'active' : ''} onClick={() => setConvertImageToPdf(true)}>המרה ל־PDF</button></div>}
-      <div className="phone-media-row"><span className="phone-counter">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${text.length.toLocaleString('he-IL')} / 20,000`}</span><div className="phone-file-actions"><label className="image-picker">צילום מסמך<input type="file" accept="image/*" capture="environment" onChange={(event) => chooseFile(event.target.files?.[0] || null, true)} /></label><label className="image-picker">בחירת קובץ<input type="file" accept="image/png,image/jpeg,application/pdf,.pdf" onChange={(event) => chooseFile(event.target.files?.[0] || null)} /></label></div></div>
+      <div className="phone-media-row"><span className="phone-counter">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${text.length.toLocaleString('he-IL')} / 20,000`}</span><div className="phone-file-actions"><label className="image-picker">בחירת קובץ<input type="file" accept="image/png,image/jpeg,application/pdf,.pdf" onChange={(event) => chooseFile(event.target.files?.[0] || null)} /></label></div></div>
       <p className="image-limit">PNG, JPEG או PDF, קובץ אחד, עד 10MB</p>
       <button className="send-button phone-send" disabled={(!text.trim() && !file) || !target || state === 'sending'}>{state === 'sending' ? (convertImageToPdf ? 'ממיר ושולח…' : 'שולח…') : state === 'sent' ? 'נשלח בהצלחה ✓' : willSendPdf ? 'שליחת ה־PDF' : file ? 'שליחת התמונה' : 'שליחת הטקסט'}</button>
     </form>
