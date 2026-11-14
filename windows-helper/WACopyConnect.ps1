@@ -88,6 +88,8 @@ $script:SettingsPath = Join-Path $script:AppDirectory 'settings.json'
 $script:LatestText = ''
 $script:LatestKind = ''
 $script:LatestImageUrl = ''
+$script:LatestFileUrl = ''
+$script:LatestFileName = ''
 $script:LatestMimeType = ''
 $script:LatestMessageId = ''
 $script:LastNotifiedMessageId = ''
@@ -198,6 +200,23 @@ function Save-ImageToFolder([byte[]]$Bytes, [string]$FolderPath, [string]$MimeTy
     return $filePath
 }
 
+function Save-FileToFolder([byte[]]$Bytes, [string]$FolderPath, [string]$OriginalName) {
+    $safeName = [IO.Path]::GetFileName($OriginalName)
+    foreach ($character in [IO.Path]::GetInvalidFileNameChars()) { $safeName = $safeName.Replace([string]$character, '_') }
+    if (-not $safeName -or -not $safeName.EndsWith('.pdf', [StringComparison]::OrdinalIgnoreCase)) {
+        $safeName = "WACopy-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).pdf"
+    }
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($safeName)
+    $filePath = Join-Path $FolderPath $safeName
+    $counter = 2
+    while ([IO.File]::Exists($filePath)) {
+        $filePath = Join-Path $FolderPath "$baseName-$counter.pdf"
+        $counter++
+    }
+    [IO.File]::WriteAllBytes($filePath, $Bytes)
+    return $filePath
+}
+
 function Poll-Latest {
     if ($script:Polling -or -not $script:Settings) { return }
     $script:Polling = $true
@@ -210,13 +229,19 @@ function Poll-Latest {
         $script:LatestText = [string]$data.text
         $script:LatestKind = [string]$data.kind
         $script:LatestImageUrl = [string]$data.imageUrl
+        $script:LatestFileUrl = [string]$data.fileUrl
+        $script:LatestFileName = [string]$data.fileName
         $script:LatestMimeType = [string]$data.mimeType
         $script:LatestMessageId = [string]$data.id
         Update-Status 'מחובר'
         if ($script:LatestMessageId -and $script:LatestMessageId -ne $script:LastNotifiedMessageId) {
             $script:LastNotifiedMessageId = $script:LatestMessageId
-            $contentName = if ($script:LatestKind -eq 'image') { 'תמונה חדשה' } else { 'טקסט חדש' }
-            Show-Balloon "$contentName התקבלה" "מקמו את הסמן במקום הרצוי ולחצו $($script:Settings.HotKey)."
+            if ($script:LatestKind -eq 'file') {
+                Show-Balloon 'קובץ PDF חדש התקבל' "פתחו את תיקיית היעד ולחצו $($script:Settings.HotKey)."
+            } else {
+                $contentName = if ($script:LatestKind -eq 'image') { 'תמונה חדשה' } else { 'טקסט חדש' }
+                Show-Balloon "$contentName התקבלה" "מקמו את הסמן במקום הרצוי ולחצו $($script:Settings.HotKey)."
+            }
         }
     } catch { Update-Status 'אין חיבור' }
     finally { $script:Polling = $false }
@@ -232,20 +257,32 @@ function Acknowledge-Paste([string]$MessageId) {
 
 function Paste-Latest {
     if (-not $script:LatestMessageId) {
-        Show-Balloon 'אין תוכן להדבקה' 'שלחו קודם טקסט או תמונה דרך WACopy.' ([System.Windows.Forms.ToolTipIcon]::Warning)
+        Show-Balloon 'אין תוכן להדבקה' 'שלחו קודם טקסט, תמונה או PDF דרך WACopy.' ([System.Windows.Forms.ToolTipIcon]::Warning)
         return
     }
     try {
-        $savedImagePath = ''
+        $savedFilePath = ''
         $shouldPaste = $true
-        if ($script:LatestKind -eq 'image') {
+        if ($script:LatestKind -eq 'file') {
+            $targetFolder = Get-ActiveExplorerFolder
+            if (-not $targetFolder) {
+                $targetFolder = Join-Path $env:USERPROFILE 'Downloads'
+                if (-not [IO.Directory]::Exists($targetFolder)) { $targetFolder = [Environment]::GetFolderPath('MyDocuments') }
+            }
+            $request = New-Request ([Net.Http.HttpMethod]::Get) $script:LatestFileUrl
+            $response = $script:Http.SendAsync($request).GetAwaiter().GetResult()
+            if (-not $response.IsSuccessStatusCode) { throw "File download failed: $([int]$response.StatusCode)" }
+            $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
+            $savedFilePath = Save-FileToFolder ([byte[]]$bytes) $targetFolder $script:LatestFileName
+            $shouldPaste = $false
+        } elseif ($script:LatestKind -eq 'image') {
             $explorerFolder = Get-ActiveExplorerFolder
             $request = New-Request ([Net.Http.HttpMethod]::Get) $script:LatestImageUrl
             $response = $script:Http.SendAsync($request).GetAwaiter().GetResult()
             if (-not $response.IsSuccessStatusCode) { throw "Image download failed: $([int]$response.StatusCode)" }
             $bytes = $response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult()
             if ($explorerFolder) {
-                $savedImagePath = Save-ImageToFolder ([byte[]]$bytes) $explorerFolder $script:LatestMimeType
+                $savedFilePath = Save-ImageToFolder ([byte[]]$bytes) $explorerFolder $script:LatestMimeType
                 $shouldPaste = $false
             } else {
                 $stream = [IO.MemoryStream]::new([byte[]]$bytes)
@@ -263,14 +300,18 @@ function Paste-Latest {
         }
         if ($shouldPaste) { [WACopyNativeInput]::PasteClipboard() }
         $pastedMessageId = $script:LatestMessageId
+        $pastedKind = $script:LatestKind
         $script:LatestText = ''
         $script:LatestKind = ''
         $script:LatestImageUrl = ''
+        $script:LatestFileUrl = ''
+        $script:LatestFileName = ''
         $script:LatestMimeType = ''
         $script:LatestMessageId = ''
         Acknowledge-Paste $pastedMessageId
-        if ($savedImagePath) {
-            Show-Balloon 'התמונה נשמרה בתיקייה' ([IO.Path]::GetFileName($savedImagePath))
+        if ($savedFilePath) {
+            $savedTitle = if ($pastedKind -eq 'file') { 'ה־PDF נשמר בתיקייה' } else { 'התמונה נשמרה בתיקייה' }
+            Show-Balloon $savedTitle ([IO.Path]::GetFileName($savedFilePath))
         } else {
             Show-Balloon 'התוכן הודבק' 'התוכן נמחק מהשרת.'
         }
@@ -318,7 +359,7 @@ function Show-Settings {
 
 $script:Settings = Load-Settings
 $script:Http = [Net.Http.HttpClient]::new()
-$script:Http.Timeout = [TimeSpan]::FromSeconds(5)
+$script:Http.Timeout = [TimeSpan]::FromSeconds(30)
 $script:Tray = [Windows.Forms.NotifyIcon]::new()
 $script:Tray.Icon = [Drawing.SystemIcons]::Application
 $script:Tray.Text = 'WACopy Connect'

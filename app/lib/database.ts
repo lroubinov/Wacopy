@@ -93,12 +93,30 @@ function openDatabase() {
       consumed_at TEXT
     ) STRICT
   `);
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS file_messages (
+      id TEXT PRIMARY KEY,
+      room_id TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+      phone_id TEXT NOT NULL REFERENCES devices(id),
+      target_kind TEXT NOT NULL CHECK(target_kind IN ('browser', 'computer')),
+      target_computer_id TEXT REFERENCES devices(id),
+      file_name TEXT NOT NULL UNIQUE,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL CHECK(mime_type = 'application/pdf'),
+      byte_size INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      consumed_at TEXT
+    ) STRICT
+  `);
   database.exec('CREATE INDEX IF NOT EXISTS idx_rooms_owner ON rooms(owner_user_id)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_devices_room_type ON devices(room_id, type)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_messages_target_pending ON messages(target_computer_id, pasted_at, expires_at)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_browser_messages_room_pending ON browser_messages(room_id, copied_at, expires_at)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_image_messages_computer_pending ON image_messages(target_computer_id, consumed_at, expires_at)');
   database.exec('CREATE INDEX IF NOT EXISTS idx_image_messages_browser_pending ON image_messages(room_id, target_kind, consumed_at, expires_at)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_file_messages_computer_pending ON file_messages(target_computer_id, consumed_at, expires_at)');
+  database.exec('CREATE INDEX IF NOT EXISTS idx_file_messages_browser_pending ON file_messages(room_id, target_kind, consumed_at, expires_at)');
   database.exec('PRAGMA optimize');
   return database;
 }
@@ -142,8 +160,12 @@ export function deleteRoom(roomId: string) {
   return result.changes > 0;
 }
 
-export function imageFilesForRoom(roomId: string) {
-  return db().prepare('SELECT file_name AS fileName FROM image_messages WHERE room_id = ?').all(roomId) as Array<{ fileName: string }>;
+export function transferFilesForRoom(roomId: string) {
+  return db().prepare(`
+    SELECT file_name AS fileName FROM image_messages WHERE room_id = ?
+    UNION ALL
+    SELECT file_name AS fileName FROM file_messages WHERE room_id = ?
+  `).all(roomId, roomId) as Array<{ fileName: string }>;
 }
 
 export function roomBelongsToUser(roomId: string, userId: string) {
@@ -284,10 +306,29 @@ export function sendImage(roomId: string, phoneId: string, target: string, fileN
   return message;
 }
 
+export function sendFile(roomId: string, phoneId: string, target: string, fileName: string, originalName: string, mimeType: string, byteSize: number) {
+  const targetKind = target === 'browser' ? 'browser' : 'computer';
+  if (targetKind === 'computer') {
+    const computer = db().prepare("SELECT id FROM devices WHERE id = ? AND room_id = ? AND type = 'computer' AND revoked_at IS NULL").get(target, roomId);
+    if (!computer) return null;
+  }
+  const now = new Date();
+  const message = { id: crypto.randomUUID(), roomId, phoneId, targetKind, targetComputerId: targetKind === 'computer' ? target : null, fileName, originalName, mimeType, byteSize, createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 10 * 60 * 1000).toISOString() };
+  db().prepare(`INSERT INTO file_messages(id, room_id, phone_id, target_kind, target_computer_id, file_name, original_name, mime_type, byte_size, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(message.id, roomId, phoneId, message.targetKind, message.targetComputerId, fileName, originalName, mimeType, byteSize, message.createdAt, message.expiresAt);
+  return message;
+}
+
 export function expiredImageFiles() {
   const now = new Date().toISOString();
   const files = db().prepare('SELECT file_name AS fileName FROM image_messages WHERE expires_at <= ? OR consumed_at IS NOT NULL').all(now) as Array<{ fileName: string }>;
   db().prepare('DELETE FROM image_messages WHERE expires_at <= ? OR consumed_at IS NOT NULL').run(now);
+  return files;
+}
+
+export function expiredTransferFiles() {
+  const now = new Date().toISOString();
+  const files = db().prepare('SELECT file_name AS fileName FROM file_messages WHERE expires_at <= ? OR consumed_at IS NOT NULL').all(now) as Array<{ fileName: string }>;
+  db().prepare('DELETE FROM file_messages WHERE expires_at <= ? OR consumed_at IS NOT NULL').run(now);
   return files;
 }
 
@@ -314,6 +355,32 @@ export function acknowledgeImage(targetKind: 'browser' | 'computer', targetId: s
   const row = db().prepare(`SELECT file_name AS fileName FROM image_messages WHERE id = ? AND target_kind = ? AND ${targetColumn} = ? AND consumed_at IS NULL`).get(messageId, targetKind, targetId) as { fileName: string } | undefined;
   if (!row) return null;
   db().prepare('UPDATE image_messages SET consumed_at = ? WHERE id = ?').run(new Date().toISOString(), messageId);
+  return row.fileName;
+}
+
+export function latestFileForComputer(computerId: string) {
+  const now = new Date().toISOString();
+  return db().prepare(`SELECT id, file_name AS fileName, original_name AS originalName, mime_type AS mimeType, byte_size AS byteSize, created_at AS updatedAt FROM file_messages WHERE target_kind = 'computer' AND target_computer_id = ? AND consumed_at IS NULL AND expires_at > ? ORDER BY created_at DESC LIMIT 1`).get(computerId, now) as { id: string; fileName: string; originalName: string; mimeType: string; byteSize: number; updatedAt: string } | undefined;
+}
+
+export function latestFileForBrowser(roomId: string) {
+  const now = new Date().toISOString();
+  return db().prepare(`SELECT id, file_name AS fileName, original_name AS originalName, mime_type AS mimeType, byte_size AS byteSize, created_at AS updatedAt FROM file_messages WHERE target_kind = 'browser' AND room_id = ? AND consumed_at IS NULL AND expires_at > ? ORDER BY created_at DESC LIMIT 1`).get(roomId, now) as { id: string; fileName: string; originalName: string; mimeType: string; byteSize: number; updatedAt: string } | undefined;
+}
+
+export function fileForComputer(computerId: string, messageId: string) {
+  return db().prepare(`SELECT file_name AS fileName, original_name AS originalName, mime_type AS mimeType FROM file_messages WHERE id = ? AND target_kind = 'computer' AND target_computer_id = ? AND consumed_at IS NULL AND expires_at > ?`).get(messageId, computerId, new Date().toISOString()) as { fileName: string; originalName: string; mimeType: string } | undefined;
+}
+
+export function fileForBrowser(roomId: string, messageId: string) {
+  return db().prepare(`SELECT file_name AS fileName, original_name AS originalName, mime_type AS mimeType FROM file_messages WHERE id = ? AND target_kind = 'browser' AND room_id = ? AND consumed_at IS NULL AND expires_at > ?`).get(messageId, roomId, new Date().toISOString()) as { fileName: string; originalName: string; mimeType: string } | undefined;
+}
+
+export function acknowledgeFile(targetKind: 'browser' | 'computer', targetId: string, messageId: string) {
+  const targetColumn = targetKind === 'browser' ? 'room_id' : 'target_computer_id';
+  const row = db().prepare(`SELECT file_name AS fileName FROM file_messages WHERE id = ? AND target_kind = ? AND ${targetColumn} = ? AND consumed_at IS NULL`).get(messageId, targetKind, targetId) as { fileName: string } | undefined;
+  if (!row) return null;
+  db().prepare('UPDATE file_messages SET consumed_at = ? WHERE id = ?').run(new Date().toISOString(), messageId);
   return row.fileName;
 }
 

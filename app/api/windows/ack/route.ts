@@ -1,4 +1,4 @@
-import { acknowledgeImage, acknowledgeMessage } from '../../../lib/database';
+import { acknowledgeFile, acknowledgeImage, acknowledgeMessage } from '../../../lib/database';
 import { deleteImage } from '../../../lib/image-storage';
 import { authenticateWindowsComputer } from '../auth';
 
@@ -15,6 +15,7 @@ export async function POST(request: Request) {
   }
   const textCleared = acknowledgeMessage(computer.id, body.messageId);
   const imageFile = textCleared ? null : acknowledgeImage('computer', computer.id, body.messageId);
-  if (imageFile) await deleteImage(imageFile);
-  return Response.json({ cleared: textCleared || Boolean(imageFile) });
+  const transferredFile = textCleared || imageFile ? null : acknowledgeFile('computer', computer.id, body.messageId);
+  if (imageFile || transferredFile) await deleteImage(imageFile || transferredFile!);
+  return Response.json({ cleared: textCleared || Boolean(imageFile) || Boolean(transferredFile) });
 }

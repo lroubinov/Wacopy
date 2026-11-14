@@ -61,7 +61,7 @@ export default function DashboardPage() {
     if (!response.ok) return;
     const data = await response.json() as { device: Device; token: string };
     if (type === 'phone') {
-      const phoneUrl = `${window.location.origin}/phone?token=${encodeURIComponent(data.token)}`;
+      const phoneUrl = `${window.location.origin}/?token=${encodeURIComponent(data.token)}`;
       setCredential({ type, name, token: data.token, phoneUrl, qr: await QRCode.toDataURL(phoneUrl, { width: 320, margin: 2, color: { dark: '#11231f', light: '#ffffff' } }) });
     } else setCredential({ type, name, token: data.token });
     await load();

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type BrowserMessage = { kind: 'text' | 'image' | null; id: string | null; text?: string; imageUrl?: string; mimeType?: string; updatedAt: string | null };
+type BrowserMessage = { kind: 'text' | 'image' | 'file' | null; id: string | null; text?: string; imageUrl?: string; fileUrl?: string; fileName?: string; mimeType?: string; byteSize?: number; updatedAt: string | null };
 
 export default function BrowserRoomPage() {
   const roomIdRef = useRef('');
@@ -41,7 +41,20 @@ export default function BrowserRoomPage() {
 
   async function copy() {
     if (!message.id) return;
-    if (message.kind === 'image' && message.imageUrl) {
+    if (message.kind === 'file' && message.fileUrl) {
+      const blob = await fetch(message.fileUrl, { cache: 'no-store' }).then((response) => {
+        if (!response.ok) throw new Error('File not found');
+        return response.blob();
+      });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = message.fileName || 'WACopy-document.pdf';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+    } else if (message.kind === 'image' && message.imageUrl) {
       const blob = await fetch(message.imageUrl, { cache: 'no-store' }).then((response) => {
         if (!response.ok) throw new Error('Image not found');
         return response.blob();
@@ -61,9 +74,13 @@ export default function BrowserRoomPage() {
   return <main className="browser-receiver" dir="rtl">
     <header className="phone-header"><Link className="brand" href="/dashboard"><span className="brand-mark"><span /><span /></span><span>WACopy</span></Link><span className="private-pill">תצוגת דפדפן פרטית</span></header>
     <section className="browser-receiver-card panel">
-      <span className="browser-symbol">▣</span><h1>תוכן שהתקבל בחדר</h1><p>{message.updatedAt ? (message.kind === 'image' ? 'התמונה התקבלה ומוכנה להעתקה' : 'הטקסט התקבל ומוכן להעתקה') : 'ממתין לתוכן מהטלפון…'}</p>
-      {message.kind === 'image' && message.imageUrl ? <div className="received-image"><img src={message.imageUrl} alt="תמונה שהתקבלה" /></div> : <div className={`received-text ${message.text ? '' : 'empty'}`}>{message.text || 'בטלפון בחרו יעד: העתקה בדפדפן'}</div>}
-      <button className="copy-button" onClick={copy} disabled={!message.id}>{state === 'copied' ? 'הועתק ללוח ✓' : message.kind === 'image' ? 'העתקת התמונה' : 'העתקת הטקסט'}</button>
+      <span className="browser-symbol">▣</span><h1>תוכן שהתקבל בחדר</h1><p>{message.updatedAt ? (message.kind === 'file' ? 'קובץ ה־PDF התקבל ומוכן להורדה' : message.kind === 'image' ? 'התמונה התקבלה ומוכנה להעתקה' : 'הטקסט התקבל ומוכן להעתקה') : 'ממתין לתוכן מהטלפון…'}</p>
+      {message.kind === 'file' && message.fileUrl
+        ? <div className="received-file"><span>PDF</span><strong>{message.fileName || 'מסמך PDF'}</strong><small>{message.byteSize ? `${(message.byteSize / 1024 / 1024).toFixed(1)} MB` : ''}</small></div>
+        : message.kind === 'image' && message.imageUrl
+          ? <div className="received-image"><img src={message.imageUrl} alt="תמונה שהתקבלה" /></div>
+          : <div className={`received-text ${message.text ? '' : 'empty'}`}>{message.text || 'בטלפון בחרו יעד: העתקה בדפדפן'}</div>}
+      <button className="copy-button" onClick={copy} disabled={!message.id}>{state === 'copied' ? 'הפעולה הושלמה ✓' : message.kind === 'file' ? 'הורדת ה־PDF' : message.kind === 'image' ? 'העתקת התמונה' : 'העתקת הטקסט'}</button>
     </section>
     <footer><span>רק בעל החדר והמנהל מורשים לגשת</span><span>•</span><span>התוכן נמחק לאחר ההעתקה</span></footer>
   </main>;

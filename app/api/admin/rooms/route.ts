@@ -1,5 +1,5 @@
 import { requestIsAdmin } from '../../auth/session';
-import { createRoom, deleteRoom, imageFilesForRoom, listRooms } from '../../../lib/database';
+import { createRoom, deleteRoom, listRooms, transferFilesForRoom } from '../../../lib/database';
 import { deleteImage } from '../../../lib/image-storage';
 
 async function authorized(request: Request) {
@@ -28,7 +28,7 @@ export async function DELETE(request: Request) {
   try { body = await request.json(); }
   catch { return Response.json({ error: 'Invalid request' }, { status: 400 }); }
   if (typeof body.roomId !== 'string') return Response.json({ error: 'Room is required' }, { status: 400 });
-  const imageFiles = imageFilesForRoom(body.roomId);
+  const imageFiles = transferFilesForRoom(body.roomId);
   const deleted = deleteRoom(body.roomId);
   if (deleted) await Promise.allSettled(imageFiles.map(({ fileName }) => deleteImage(fileName)));
   return Response.json({ deleted }, { status: deleted ? 200 : 404 });
