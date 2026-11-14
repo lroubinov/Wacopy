@@ -14,12 +14,12 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PORT=3100 \
     HOST=0.0.0.0 \
-    APP_VERSION=5.2.0 \
+    APP_VERSION=5.3.0 \
     WACOPY_DB_PATH=/data/wacopy.db \
     WACOPY_IMAGE_PATH=/data/images
 
 LABEL org.opencontainers.image.title="Maaviron" \
-      org.opencontainers.image.version="5.2.0"
+      org.opencontainers.image.version="5.3.0"
 
 RUN groupadd --system --gid 1001 maaviron && \
     useradd --system --uid 1001 --gid maaviron maaviron && \

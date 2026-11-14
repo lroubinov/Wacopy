@@ -11,17 +11,20 @@ export default function PhonePage() {
   const [context, setContext] = useState<Context | null>(null);
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [convertImageToPdf, setConvertImageToPdf] = useState(false);
   const [target, setTarget] = useState('');
   const [state, setState] = useState<'loading' | 'ready' | 'sending' | 'sent' | 'invalid'>('loading');
   const imagePreview = useMemo(() => file && file.type.startsWith('image/') ? URL.createObjectURL(file) : '', [file]);
   const isPdf = Boolean(file && (file.type === 'application/pdf' || file.name.toLocaleLowerCase('en-US').endsWith('.pdf')));
+  const willSendPdf = isPdf || Boolean(imagePreview && convertImageToPdf);
 
   useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
 
-  function chooseFile(selected: File | null) {
+  function chooseFile(selected: File | null, convertByDefault = false) {
     const supported = selected && (['image/png', 'image/jpeg', 'application/pdf'].includes(selected.type) || selected.name.toLocaleLowerCase('en-US').endsWith('.pdf'));
     if (!selected || !supported || selected.size > 10 * 1024 * 1024) return;
     setFile(selected);
+    setConvertImageToPdf(Boolean(selected.type.startsWith('image/') && convertByDefault));
     setText('');
   }
 
@@ -56,12 +59,13 @@ export default function PhonePage() {
       const form = new FormData();
       form.set('targetComputerId', target);
       form.set('file', file);
+      if (convertImageToPdf && !isPdf) form.set('convertToPdf', 'true');
       response = await fetch('/api/phone/send-file', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form });
     } else {
       response = await fetch('/api/phone/send', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ targetComputerId: target, text }) });
     }
     if (!response.ok) { setState('ready'); return; }
-    setText(''); setFile(null); setState('sent'); window.setTimeout(() => setState('ready'), 2200);
+    setText(''); setFile(null); setConvertImageToPdf(false); setState('sent'); window.setTimeout(() => setState('ready'), 2200);
   }
 
   if (state === 'loading') return <main className="phone-shell"><div className="phone-loading">מתחבר לחדר הפרטי…</div></main>;
@@ -78,15 +82,16 @@ export default function PhonePage() {
       </select>
       {!context.computers.length && <p className="no-computers">אין מחשב Windows מחובר — ניתן עדיין לשלוח לדפדפן.</p>}
       <label htmlFor="phone-text">תוכן להעברה</label>
-      <textarea id="phone-text" value={text} onChange={(event) => { setText(event.target.value); if (event.target.value) setFile(null); }} onPaste={(event) => {
+      <textarea id="phone-text" value={text} onChange={(event) => { setText(event.target.value); if (event.target.value) { setFile(null); setConvertImageToPdf(false); } }} onPaste={(event) => {
         const pasted = Array.from(event.clipboardData.items).find((item) => item.type === 'image/png' || item.type === 'image/jpeg')?.getAsFile();
         if (pasted) { event.preventDefault(); chooseFile(pasted); }
       }} placeholder="לחיצה ארוכה כאן כדי להדביק טקסט או תמונה…" maxLength={20000} />
-      {imagePreview && <div className="phone-image-preview"><img src={imagePreview} alt="תמונה שנבחרה להעברה" /><button type="button" onClick={() => setFile(null)}>הסרת הקובץ</button></div>}
-      {isPdf && file && <div className="phone-file-preview"><span>PDF</span><strong>{file.name}</strong><small>{(file.size / 1024 / 1024).toFixed(1)} MB</small><button type="button" onClick={() => setFile(null)}>הסרה</button></div>}
-      <div className="phone-media-row"><span className="phone-counter">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${text.length.toLocaleString('he-IL')} / 20,000`}</span><label className="image-picker">בחירת תמונה או PDF<input type="file" accept="image/png,image/jpeg,application/pdf,.pdf" onChange={(event) => chooseFile(event.target.files?.[0] || null)} /></label></div>
+      {imagePreview && <div className="phone-image-preview"><img src={imagePreview} alt="תמונה שנבחרה להעברה" />{convertImageToPdf && <span className="pdf-format-badge">יישלח כ־PDF</span>}<button type="button" onClick={() => { setFile(null); setConvertImageToPdf(false); }}>הסרת הקובץ</button></div>}
+      {isPdf && file && <div className="phone-file-preview"><span>PDF</span><strong>{file.name}</strong><small>{(file.size / 1024 / 1024).toFixed(1)} MB</small><button type="button" onClick={() => { setFile(null); setConvertImageToPdf(false); }}>הסרה</button></div>}
+      {imagePreview && <div className="phone-format-picker"><button type="button" className={convertImageToPdf ? '' : 'active'} onClick={() => setConvertImageToPdf(false)}>שליחה כתמונה</button><button type="button" className={convertImageToPdf ? 'active' : ''} onClick={() => setConvertImageToPdf(true)}>המרה ל־PDF</button></div>}
+      <div className="phone-media-row"><span className="phone-counter">{file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : `${text.length.toLocaleString('he-IL')} / 20,000`}</span><div className="phone-file-actions"><label className="image-picker">צילום מסמך<input type="file" accept="image/*" capture="environment" onChange={(event) => chooseFile(event.target.files?.[0] || null, true)} /></label><label className="image-picker">בחירת קובץ<input type="file" accept="image/png,image/jpeg,application/pdf,.pdf" onChange={(event) => chooseFile(event.target.files?.[0] || null)} /></label></div></div>
       <p className="image-limit">PNG, JPEG או PDF, קובץ אחד, עד 10MB</p>
-      <button className="send-button phone-send" disabled={(!text.trim() && !file) || !target || state === 'sending'}>{state === 'sending' ? 'שולח…' : state === 'sent' ? 'נשלח בהצלחה ✓' : isPdf ? 'שליחת ה־PDF' : file ? 'שליחת התמונה' : 'שליחת הטקסט'}</button>
+      <button className="send-button phone-send" disabled={(!text.trim() && !file) || !target || state === 'sending'}>{state === 'sending' ? (convertImageToPdf ? 'ממיר ושולח…' : 'שולח…') : state === 'sent' ? 'נשלח בהצלחה ✓' : willSendPdf ? 'שליחת ה־PDF' : file ? 'שליחת התמונה' : 'שליחת הטקסט'}</button>
     </form>
     <footer><span>החיבור מוצפן</span><span>•</span><span>התוכן נמחק לאחר ההדבקה</span></footer>
   </main>;
